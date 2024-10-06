@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/olekukonko/tablewriter"
 )
 
 type Weather struct {
@@ -78,35 +79,47 @@ func getWeather(url string) error {
 		return fmt.Errorf("Error parsing the JSON response: %v", err)
 	}
 
-	location := weather.Location
-	current := weather.Current
-	hours := weather.Forecast.ForecastDay[0].Hour
-
 	fmt.Printf(
-		"%s, %s: %.0f°C, %s\n",
-		location.Name, location.Country,
-		current.TempC,
-		current.Condition.Text)
+		"\nWeather for %s, %s: %.1f°C, %s\n\n",
+		weather.Location.Name,
+		weather.Location.Country,
+		weather.Current.TempC,
+		weather.Current.Condition.Text,
+	)
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Time", "Temp (°C)", "Chance of Rain (%)", "Condition"})
 
-	for _, hour := range hours {
-		date := time.Unix(hour.TimeEpoch, 0)
-
-		if time.Now().After(date) {
+	// Loop through hourly forecast and fill the table
+	for _, hour := range weather.Forecast.ForecastDay[0].Hour {
+		hourTime := time.Unix(hour.TimeEpoch, 0)
+		if time.Now().After(hourTime) {
 			continue
 		}
 
-		msg := fmt.Sprintf(
-			"%s, %.0f°C, %.0f%% chance of rain, %s\n",
-			date.Format("15:04"),
-			hour.TempC,
-			hour.ChanceOfRain,
-			hour.Condition.Text)
-		if hour.ChanceOfRain < 40 {
-			fmt.Print(msg)
+		// Add a new row for each hour of the forecast
+		row := []string{
+			hourTime.Format("15:04"),
+			fmt.Sprintf("%.1f", hour.TempC),
+			fmt.Sprintf("%.0f", hour.ChanceOfRain),
+			hour.Condition.Text,
+		}
+
+		// Highlight rows in red if chance of rain is more than 40%
+		if hour.ChanceOfRain > 40 {
+			color.Set(color.FgRed)
+			table.Rich(row, []tablewriter.Colors{
+				{}, {}, {tablewriter.FgRedColor}, {},
+			})
+			color.Unset()
 		} else {
-			color.Red(msg)
+			table.Append(row)
 		}
 	}
 
+	// Render and display the table in the terminal
+	table.Render()
+
+	// Print a tip to the user regarding the meaning of red rows
+	fmt.Println("\nTip: Red rows indicate a high chance of rain. Be prepared!")
 	return nil
 }
